@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 去掉系统 ActionBar，避免与布局里自定义的标题栏重复；
+         状态栏与标题栏同色，视觉上连成一体。 -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#3f51b5</item>
+        <item name="android:statusBarColor">#3f51b5</item>
+        <item name="android:windowBackground">#fafafa</item>
+    </style>
+</resources>

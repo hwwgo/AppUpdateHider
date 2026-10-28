@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">应用更新隐藏器</string>
+    <string name="xposed_description">在应用商店 / 应用市场中隐藏指定应用的更新信息：商店不会再把它们列为“可更新”，也不会提示更新。</string>
+    <string name="search_hint">搜索应用名称或包名</string>
+</resources>

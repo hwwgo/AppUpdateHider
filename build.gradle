@@ -1,0 +1,18 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.5.2'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        // 传统 Xposed API (de.robv.android.xposed:api:82) 在 jcenter，已停服，用阿里云镜像
+        maven { url 'https://maven.aliyun.com/repository/jcenter' }
+    }
+}

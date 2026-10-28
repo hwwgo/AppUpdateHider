@@ -1,0 +1,62 @@
+plugins {
+    id 'com.android.application'
+}
+
+// 固定使用仓库里的 debug keystore，保证本地与 GitHub Actions 构建出的 APK 签名一致，
+// 新版本可以直接覆盖安装，不会出现「签名不一致、安装失败」
+def debugKeystore = rootProject.file('keystore/debug.keystore')
+if (!debugKeystore.exists()) {
+    debugKeystore = file("${System.getProperty('user.home')}/.android/debug.keystore")
+}
+
+android {
+    namespace 'com.appupdatehider'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.appupdatehider"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        debug {
+            storeFile debugKeystore
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        debug {
+            // 调试包也开启压缩，减小体积（Xposed 入口类由 proguard-rules 保留）
+            // 需要断点调试时可临时改成 false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// 统一产物命名：AppUpdateHider-<versionName>-debug.apk
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            def ver = output.versionName.orNull ?: "1.0"
+            output.outputFileName.set("AppUpdateHider-${ver}-${variant.buildType}.apk")
+        }
+    }
+}
+
+dependencies {
+    // 传统 Xposed API（编译期 stub，运行期由 LSPosed 提供实现）
+    compileOnly files('libs/api-82.jar')
+}

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LSPosed 推荐作用域：市面常见应用商店 / 应用市场。
+         这里写包名，LSPosed 会把它认识且本机已安装的应用在「作用域」页标为「推荐」。
+         未安装的条目不会显示，留着不影响。本模块不需要系统框架。 -->
+    <string-array name="xposed_scope">
+        <!-- ===== 国内厂商商店 ===== -->
+        <!-- OPPO / 一加 / realme -->
+        <item>com.heytap.market</item>
+        <item>com.oppo.market</item>
+        <item>com.coloros.market</item>
+        <!-- vivo / iQOO -->
+        <item>com.bbk.appstore</item>
+        <!-- 华为 -->
+        <item>com.huawei.appmarket</item>
+        <!-- 荣耀 -->
+        <item>com.hihonor.appmarket</item>
+        <!-- 小米 / Redmi -->
+        <item>com.xiaomi.market</item>
+        <item>com.xiaomi.mipicks</item>
+        <!-- 三星 -->
+        <item>com.sec.android.app.samsungapps</item>
+        <!-- 魅族 -->
+        <item>com.meizu.mstore</item>
+        <!-- 联想 -->
+        <item>com.lenovo.leos.appstore</item>
+
+        <!-- ===== 国内第三方商店 ===== -->
+        <!-- 腾讯应用宝 -->
+        <item>com.tencent.android.qqdownloader</item>
+        <!-- 360 手机助手 -->
+        <item>com.qihoo.appstore</item>
+        <!-- 百度手机助手 -->
+        <item>com.baidu.appsearch</item>
+        <!-- 豌豆荚 -->
+        <item>com.wandoujia.phoenix2</item>
+
+        <!-- ===== 海外商店 ===== -->
+        <!-- Google Play -->
+        <item>com.android.vending</item>
+        <!-- Amazon Appstore -->
+        <item>com.amazon.venezia</item>
+        <!-- Aurora Store -->
+        <item>com.aurora.store</item>
+        <!-- F-Droid -->
+        <item>org.fdroid.fdroid</item>
+        <!-- Aptoide -->
+        <item>cm.aptoide.pt</item>
+        <!-- Steam -->
+        <item>com.valvesoftware.android.steam.community</item>
+        <!-- RuStore -->
+        <item>ru.vk.store</item>
+    </string-array>
+</resources>

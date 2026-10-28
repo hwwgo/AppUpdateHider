@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#fafafa">
+
+    <!-- 顶部标题栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:background="#3f51b5">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textColor="#ffffff"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="已锁定 0 个应用"
+            android:textColor="#e8eaf6"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 搜索框 -->
+    <EditText
+        android:id="@+id/search_box"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:hint="@string/search_hint"
+        android:inputType="text"
+        android:singleLine="true"
+        android:padding="10dp"
+        android:background="#ffffff"
+        android:drawableLeft="@android:drawable/ic_menu_search"
+        android:drawablePadding="6dp" />
+
+    <!-- 应用列表（已勾选应用置顶 + 其他应用）
+         注意：不要开启 fastScrollEnabled，否则右侧会绘制快速滚动滑块，
+         与行尾的勾选框重叠，点勾选时容易误触成拖动滚动条。 -->
+    <ListView
+        android:id="@+id/app_list"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scrollingCache="false"
+        android:scrollbarStyle="outsideOverlay" />
+
+</LinearLayout>
