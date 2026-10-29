@@ -33,7 +33,7 @@
 
 - 清单声明 **`xposedsharedprefs=true`**：LSPosed 才会把模块配置暴露给商店进程，否则 Android 10+ 的私有目录 + SELinux 会让黑名单读取失败；
 - 初始化延迟到 **`ContextWrapper.attachBaseContext`**：此时类加载完整、`Context` 可用，hook 最可靠；
-- 黑名单读取以 **`XSharedPreferences`** 为主、**`ContentProvider`** 为兜底；
+- 黑名单读取按 **`XSharedPreferences` → 进程内本地缓存 → `ContentProvider`** 三级兜底，模块 App 不需要常驻后台；
 - `xposedscope` 用资源数组列出常见商店，LSPosed 作用域页会标为「推荐」。
 
 ## 推荐作用域
@@ -143,6 +143,35 @@ AppUpdateHider/
 | 框架 | LSPosed（传统 Xposed API） |
 | 应用商店 | ColorOS / OPPO、vivo、华为、荣耀、小米、三星、魅族、联想、Google Play、Amazon、Aurora、F-Droid、Aptoide、Steam、RuStore 等 |
 
+## 常见问题
+
+### 模块 App 需要一直挂在后台吗？
+
+**不需要**（1.1 起）。黑名单读取有三条路径，任意一条可用即可：
+
+| 顺序 | 来源 | 是否依赖模块进程存活 |
+|---|---|---|
+| 1 | `XSharedPreferences`（LSPosed 提供） | 否 |
+| 2 | 商店进程内的**本地缓存**（首次读取成功后自动写入） | 否 |
+| 3 | `ContentProvider`（每次最多 60 秒尝试一次） | 是，仅用于刷新缓存 |
+
+只要成功读到过一次黑名单，就会把它写进**应用商店自己进程的私有存储**。之后模块 App 被划掉、被系统冻结、被「应用速冻」限制，隐藏依然生效——因为商店进程读的是自己目录里的副本。
+
+首次使用仍需打开模块 App 勾选并保存一次（这是唯一必须的一步）。
+
+在 LSPosed 日志里搜 `AppUpdateHider`，可以看到当前走的是哪条路：
+
+```
+Block list via XSharedPreferences, size=3   # 最理想，实时
+Block list via provider, size=3             # 模块进程被拉起，已顺便写入缓存
+Block list via local-cache, size=3          # 模块进程不在，用缓存（正常）
+Block list via empty, size=0                # 没有配置，或三条路径都失败
+```
+
+### 为什么改了勾选，商店没有立刻变化？
+
+黑名单在进程内有 5 秒缓存，且商店自身也会缓存「可更新」列表。改完勾选后**重启应用商店**（或在系统设置里强制停止商店）最稳妥。
+
 ## 注意事项
 
 - 本模块**只隐藏更新信息，不阻止安装**。
@@ -150,7 +179,7 @@ AppUpdateHider/
 - 若商店仍显示可更新，依次检查：
   1. 作用域是否勾了**应用商店**（包名是否正确）；
   2. LSPosed 日志（搜 `AppUpdateHider`）是否出现 `handleLoadPackage: <商店包名>`；
-  3. 是否出现 `Block list via XSharedPreferences, size=N`（N 应为正数）；
+  3. 是否出现 `Block list via ..., size=N`（N 应为正数）；
   4. 是否出现 `Hide hooks installed`；
   5. 商店是否缓存了旧列表（清数据后重试）。
 

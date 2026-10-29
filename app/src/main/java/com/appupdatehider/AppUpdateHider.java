@@ -1,6 +1,7 @@
 package com.appupdatehider;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.util.Log;
@@ -34,7 +35,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 关键细节（缺一不可）：
  *   - 清单声明 xposedsharedprefs=true，LSPosed 才会把黑名单暴露给商店进程；
  *   - 初始化延迟到 ContextWrapper.attachBaseContext，此时类加载完整、Context 可用；
- *   - 黑名单读取以 XSharedPreferences 为主、ContentProvider 为兜底。
+ *   - 黑名单读取：XSharedPreferences → ContentProvider → 商店进程本地缓存，
+ *     三者任意一条可用即可，模块 App 不需要常驻后台。
  */
 public class AppUpdateHider implements IXposedHookLoadPackage {
 
@@ -43,13 +45,23 @@ public class AppUpdateHider implements IXposedHookLoadPackage {
     private static final String PREF_NAME = "blocked";
     private static final String KEY_BLOCKED = "blocked_packages";
 
+    // 在每个被 hook 的进程里保存一份黑名单副本，模块进程被杀后依然生效
+    private static final String CACHE_PREF = "auh_local_cache";
+    private static final String CACHE_KEY = "blocked_packages";
+    private static final String CACHE_TIME = "cached_at";
+
+    private static final long MEM_TTL_MS = 5000L;
+    private static final long PROVIDER_RETRY_MS = 60_000L;
+
     private static final AtomicBoolean sInit = new AtomicBoolean(false);
     private static final Set<String> EMPTY = Collections.emptySet();
 
-    private static boolean sLoggedRead = false;
+    private static String sLastSource = "";
     private static Context sCtx = null;
     private static Set<String> sCache = null;
     private static long sCacheAt = 0;
+    private static long sLastProviderTry = 0;
+    private static Set<String> sLastSavedCache = null;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
@@ -248,7 +260,7 @@ public class AppUpdateHider implements IXposedHookLoadPackage {
         return null;
     }
 
-    // ============ 黑名单读取（XSharedPreferences 优先，Provider 兜底） ============
+    // ============ 黑名单读取：XSharedPreferences → 本地缓存 → Provider ============
 
     private boolean isBlocked(String pkg) {
         return pkg != null && getBlockedSet().contains(pkg);
@@ -256,7 +268,7 @@ public class AppUpdateHider implements IXposedHookLoadPackage {
 
     private Set<String> getBlockedSet() {
         long now = System.currentTimeMillis();
-        if (sCache != null && (now - sCacheAt) < 1000L) return sCache;
+        if (sCache != null && (now - sCacheAt) < MEM_TTL_MS) return sCache;
         Set<String> result = loadBlockedSet();
         sCache = result;
         sCacheAt = now;
@@ -264,32 +276,83 @@ public class AppUpdateHider implements IXposedHookLoadPackage {
     }
 
     private Set<String> loadBlockedSet() {
+        // 1) XSharedPreferences：LSPosed 提供，模块进程不需要活着
         try {
             XSharedPreferences prefs = new XSharedPreferences(MODULE_PKG, PREF_NAME);
             prefs.reload();
-            Set<String> blocked = prefs.getStringSet(KEY_BLOCKED, EMPTY);
-            if (blocked != null && !blocked.isEmpty()) {
-                logOnce("XSharedPreferences", blocked.size());
-                return blocked;
+            if (prefs.contains(KEY_BLOCKED)) {
+                Set<String> blocked = prefs.getStringSet(KEY_BLOCKED, EMPTY);
+                Set<String> out = blocked == null ? EMPTY : new HashSet<>(blocked);
+                logSource("XSharedPreferences", out.size());
+                saveCache(out);
+                return out;
             }
         } catch (Throwable t) {
             Log.w(TAG, "XSharedPreferences failed: " + t.getMessage());
         }
 
-        Set<String> fromProvider = readFromProvider();
-        if (fromProvider != null) {
-            logOnce("provider", fromProvider.size());
-            return fromProvider;
+        // 2) 先看本地缓存：模块进程被杀后，这是主要数据来源
+        Set<String> cached = readCache();
+
+        // 3) ContentProvider：只在没有缓存、或距上次尝试超过 60 秒时访问，
+        //    避免商店高频查询时反复拉起/唤醒模块进程（部分 ROM 会冻结后台进程）
+        long now = System.currentTimeMillis();
+        if (cached == null || (now - sLastProviderTry) >= PROVIDER_RETRY_MS) {
+            sLastProviderTry = now;
+            Set<String> fromProvider = readFromProvider();
+            if (fromProvider != null) {
+                logSource("provider", fromProvider.size());
+                saveCache(fromProvider);
+                return fromProvider;
+            }
         }
 
-        logOnce("empty", 0);
+        if (cached != null) {
+            logSource("local-cache", cached.size());
+            return cached;
+        }
+
+        logSource("empty", 0);
         return EMPTY;
     }
 
-    private void logOnce(String source, int size) {
-        if (!sLoggedRead) {
-            sLoggedRead = true;
+    /** 只在读取来源发生变化时打印一次，避免刷屏 */
+    private void logSource(String source, int size) {
+        if (!source.equals(sLastSource)) {
+            sLastSource = source;
             Log.i(TAG, "Block list via " + source + ", size=" + size);
+        }
+    }
+
+    // ============ 进程内磁盘缓存（关键：不依赖模块 App 存活） ============
+
+    private void saveCache(Set<String> set) {
+        Context ctx = getAnyContext();
+        if (ctx == null) return;
+        try {
+            if (set.equals(sLastSavedCache)) return;
+            ctx.getSharedPreferences(CACHE_PREF, Context.MODE_PRIVATE)
+                    .edit()
+                    .putStringSet(CACHE_KEY, new HashSet<>(set))
+                    .putLong(CACHE_TIME, System.currentTimeMillis())
+                    .commit();
+            sLastSavedCache = new HashSet<>(set);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private Set<String> readCache() {
+        Context ctx = getAnyContext();
+        if (ctx == null) return null;
+        try {
+            SharedPreferences sp = ctx.getSharedPreferences(CACHE_PREF, Context.MODE_PRIVATE);
+            if (!sp.contains(CACHE_KEY)) return null;
+            Set<String> s = sp.getStringSet(CACHE_KEY, null);
+            if (s == null) return null;
+            sLastSavedCache = new HashSet<>(s);
+            return new HashSet<>(s);
+        } catch (Throwable t) {
+            return null;
         }
     }
 
