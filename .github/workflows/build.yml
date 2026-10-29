@@ -25,11 +25,45 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # 不使用 android-actions/setup-android：它会执行 `sdkmanager tools`，
+      # 而新版 SDK 仓库已下线 tools 包，会导致 job 直接失败。
+      # ubuntu-latest 镜像本身预装了 Android SDK，这里只确认路径、补 license。
+      - name: Prepare Android SDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          if [ ! -d "$SDK_ROOT" ]; then
+            echo "找不到 Android SDK：$SDK_ROOT" >&2
+            exit 1
+          fi
+          {
+            echo "ANDROID_HOME=$SDK_ROOT"
+            echo "ANDROID_SDK_ROOT=$SDK_ROOT"
+          } >> "$GITHUB_ENV"
+          echo "==> SDK: $SDK_ROOT"
+
+          # 直接写 license 文件，避免 sdkmanager 联网接受 license 时卡住
+          if [ ! -f "$SDK_ROOT/licenses/android-sdk-license" ]; then
+            mkdir -p "$SDK_ROOT/licenses" 2>/dev/null || true
+            printf '%s\n' \
+              24333f8a63b6825ea9c5514f83c2829b004d1fee \
+              84831b9409646a918e30573bab4c9c91346d8abd \
+              d975f751698a77b662f1254ddbeed3901e976f5a \
+              > "$SDK_ROOT/licenses/android-sdk-license" 2>/dev/null || true
+          fi
+
+          echo "==> platforms:"; ls "$SDK_ROOT/platforms" 2>/dev/null || true
+          echo "==> build-tools:"; ls "$SDK_ROOT/build-tools" 2>/dev/null || true
+
+          # 只有缺组件时才联网安装（预装镜像里通常已有 34）
+          if [ ! -d "$SDK_ROOT/platforms/android-34" ] || [ ! -d "$SDK_ROOT/build-tools/34.0.0" ]; then
+            SDKMANAGER="$(ls -d "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -n 1)"
+            if [ -n "$SDKMANAGER" ]; then
+              yes | "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+            fi
+          fi
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -42,8 +76,9 @@ jobs:
       - name: Verify APK
         run: |
           ls -lh app/build/outputs/apk/debug/
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs \
-            app/build/outputs/apk/debug/*.apk
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1)"
+          echo "==> apksigner: $APKSIGNER"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/*.apk
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
